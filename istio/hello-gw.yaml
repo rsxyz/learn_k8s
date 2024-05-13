@@ -1,0 +1,31 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: hello-gw
+  namespace: apps
+spec:
+  selector:
+    istio: ingressgateway # use istio default controller
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+     - 'app1.techguru.net'
+     - 'app2.techguru.net'
+     - '*.techguru.net'
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+     - 'app1.techguru.net'
+     - 'app2.techguru.net'
+     - '*.techguru.net'
+    tls:
+      mode: SIMPLE
+      minProtocolVersion: TLSV1_2
+      credentialName: app1-tls-credential # must be the same as secret
