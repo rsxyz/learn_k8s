@@ -1,221 +1,26 @@
-Istio Traffic Routing: Technical Documentation
+Traffic Routing Use Cases with Istio Ingress
 Introduction
-Istio is an open-source service mesh that provides a uniform way to secure, connect, and observe microservices. One of its core functionalities is traffic management, which enables fine-grained control over traffic routing within a microservice architecture. This document provides technical details and examples for different use cases of traffic routing in Istio.
+Istio is a powerful service mesh that provides a lot of capabilities, including traffic management, security, and observability. One of the key features of Istio is its ability to control the flow of traffic between services using Istio ingress. This document provides an overview of various traffic routing use cases using Istio ingress, along with practical examples.
 
 Prerequisites
-Before you begin, ensure you have:
+Before proceeding, ensure you have the following prerequisites:
 
 A Kubernetes cluster with Istio installed.
-Basic knowledge of Kubernetes and Istio components.
-Traffic Routing Concepts
-VirtualService
-A VirtualService defines the rules that control how requests for a service are routed within the mesh.
-
-DestinationRule
-A DestinationRule defines policies that apply to traffic intended for a service after routing has occurred, such as load balancing and connection pool settings.
-
-Gateway
-A Gateway configures a load balancer for HTTP/TCP traffic to services within the mesh.
-
+Basic knowledge of Kubernetes and Istio.
+kubectl command-line tool installed and configured to interact with your cluster.
 Use Cases
-1. Traffic Splitting
-Scenario
-Split traffic between two versions of a service (v1 and v2).
+1. Simple Traffic Routing
+Description: Route traffic to a single service based on a host and path.
 
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
-kind: VirtualService
-metadata:
-  name: reviews
-spec:
-  hosts:
-  - reviews
-  http:
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
-      weight: 75
-    - destination:
-        host: reviews
-        subset: v2
-      weight: 25
----
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
-metadata:
-  name: reviews
-spec:
-  host: reviews
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-2. Canary Deployment
-Scenario
-Route a small percentage of traffic to a new version for testing in production.
+Example:
 
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
-kind: VirtualService
-metadata:
-  name: productpage
-spec:
-  hosts:
-  - productpage
-  http:
-  - route:
-    - destination:
-        host: productpage
-        subset: v1
-      weight: 90
-    - destination:
-        host: productpage
-        subset: v2
-      weight: 10
----
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
-metadata:
-  name: productpage
-spec:
-  host: productpage
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-3. Traffic Shifting Based on Headers
-Scenario
-Route traffic based on specific HTTP headers (e.g., user-agent, cookie).
+```sh
 
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
-kind: VirtualService
-metadata:
-  name: reviews
-spec:
-  hosts:
-  - reviews
-  http:
-  - match:
-    - headers:
-        end-user:
-          exact: "jason"
-    route:
-    - destination:
-        host: reviews
-        subset: v2
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
----
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
-metadata:
-  name: reviews
-spec:
-  host: reviews
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-4. Fault Injection
-Scenario
-Introduce faults to test the resiliency of services.
-
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
-kind: VirtualService
-metadata:
-  name: reviews
-spec:
-  hosts:
-  - reviews
-  http:
-  - fault:
-      delay:
-        percent: 100
-        fixedDelay: 5s
-    route:
-    - destination:
-        host: reviews
-        subset: v1
----
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
-metadata:
-  name: reviews
-spec:
-  host: reviews
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-5. Traffic Mirroring
-Scenario
-Mirror traffic to a new version of the service for testing without affecting production traffic.
-
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
-kind: VirtualService
-metadata:
-  name: reviews
-spec:
-  hosts:
-  - reviews
-  http:
-  - route:
-    - destination:
-        host: reviews
-        subset: v1
-    mirror:
-      host: reviews
-      subset: v2
----
-apiVersion: networking.istio.io/v1alpha3
-kind: DestinationRule
-metadata:
-  name: reviews
-spec:
-  host: reviews
-  subsets:
-  - name: v1
-    labels:
-      version: v1
-  - name: v2
-    labels:
-      version: v2
-6. Gateway Routing
-Scenario
-Expose a service to external traffic through an Istio Gateway.
-
-Configuration
-yaml
-Copy code
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: my-gateway
+  name: simple-gateway
+  namespace: istio-system
 spec:
   selector:
     istio: ingressgateway
@@ -225,24 +30,237 @@ spec:
       name: http
       protocol: HTTP
     hosts:
-    - "myapp.example.com"
+    - "example.com"
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: myapp
+  name: simple-routing
+  namespace: default
 spec:
   hosts:
-  - "myapp.example.com"
+  - "example.com"
   gateways:
-  - my-gateway
+  - istio-system/simple-gateway
   http:
-  - route:
+  - match:
+    - uri:
+        exact: /hello
+    route:
     - destination:
-        host: myapp
+        host: hello-service
         port:
-          number: 80
-Conclusion
-Istio provides powerful traffic management capabilities to control and shape traffic within your microservice architecture. By leveraging VirtualService, DestinationRule, and Gateway resources, you can implement advanced routing scenarios to meet your application's needs.
+          number: 8080
+```
+2. Canary Releases
+Description: Gradually roll out a new version of a service to a small percentage of users.
 
-For more detailed information and advanced use cases, refer to the Istio documentation.
+Example:
+
+```sh
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: canary-release
+  namespace: default
+spec:
+  hosts:
+  - "example.com"
+  gateways:
+  - istio-system/simple-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /hello
+    route:
+    - destination:
+        host: hello-service
+        subset: v2
+      weight: 10
+    - destination:
+        host: hello-service
+        subset: v1
+      weight: 90
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hello-destination
+  namespace: default
+spec:
+  host: hello-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+```
+3. Traffic Mirroring
+Description: Mirror a percentage of traffic to a new service version without affecting the main user traffic.
+
+Example:
+
+```sh
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: traffic-mirroring
+  namespace: default
+spec:
+  hosts:
+  - "example.com"
+  gateways:
+  - istio-system/simple-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /hello
+    route:
+    - destination:
+        host: hello-service
+        subset: v1
+    mirror:
+      host: hello-service
+      subset: v2
+    mirrorPercentage:
+      value: 20.0
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hello-destination
+  namespace: default
+spec:
+  host: hello-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+```
+4. Fault Injection
+Description: Introduce faults to test the resiliency of your services.
+
+Example:
+
+```sh
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: fault-injection
+  namespace: default
+spec:
+  hosts:
+  - "example.com"
+  gateways:
+  - istio-system/simple-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /hello
+    fault:
+      delay:
+        percentage:
+          value: 100.0
+        fixedDelay: 5s
+      abort:
+        percentage:
+          value: 10.0
+        httpStatus: 500
+    route:
+    - destination:
+        host: hello-service
+        subset: v1
+```
+5. Traffic Shifting
+Description: Gradually shift traffic from one service version to another.
+
+Example:
+
+```sh
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: traffic-shifting
+  namespace: default
+spec:
+  hosts:
+  - "example.com"
+  gateways:
+  - istio-system/simple-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /hello
+    route:
+    - destination:
+        host: hello-service
+        subset: v2
+      weight: 30
+    - destination:
+        host: hello-service
+        subset: v1
+      weight: 70
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hello-destination
+  namespace: default
+spec:
+  host: hello-service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+```
+6. Header-based Routing
+Description: Route traffic to different services based on HTTP headers.
+
+Example:
+
+```sh
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: header-routing
+  namespace: default
+spec:
+  hosts:
+  - "example.com"
+  gateways:
+  - istio-system/simple-gateway
+  http:
+  - match:
+    - headers:
+        user:
+          exact: admin
+    route:
+    - destination:
+        host: admin-service
+        port:
+          number: 8080
+  - match:
+    - headers:
+        user:
+          exact: guest
+    route:
+    - destination:
+        host: guest-service
+        port:
+          number: 8080
+```
+Conclusion
+Istio ingress offers a versatile and powerful mechanism for managing traffic in Kubernetes environments. By leveraging the different routing capabilities such as simple routing, canary releases, traffic mirroring, fault injection, traffic shifting, and header-based routing, you can effectively control and monitor the flow of traffic within your services, enhancing both resiliency and user experience.
+
+References
+Istio Documentation
+Kubernetes Documentation
+This document outlines various use cases for traffic routing with Istio ingress, providing practical YAML examples for each scenario. This should help you understand and implement these routing strategies in your own Kubernetes clusters.
