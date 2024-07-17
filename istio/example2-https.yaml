@@ -1,0 +1,123 @@
+kubectl create -n istio-system secret tls sb1-tls-cert --key /path/to/tls.key --cert /path/to/tls.crt
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: sb1-gateway
+  namespace: istio-system  # The namespace where the Istio ingress gateway is deployed
+spec:
+  selector:
+    istio: ingressgateway  # Use the appropriate selector for your ingress gateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: sb1-tls-cert  # The name of the secret containing the TLS certs
+    hosts:
+    - "sb1.atlas.example.com"
+    - "api.sb1.atlas.example.com"
+    - "support.sb1.atlas.example.com"
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: sb1-ui-vs
+  namespace: sb1
+spec:
+  hosts:
+  - "sb1.atlas.example.com"
+  gateways:
+  - istio-system/sb1-gateway  # Use the full name of the gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/cc"
+    route:
+    - destination:
+        host: ui-svc.sb1.svc.cluster.local
+        port:
+          number: 3000
+        headers:
+          request:
+            add:
+              x-envoy-upstream-rq-timeout-ms: "3000"  # Example of setting session timeout
+    headers:
+      request:
+        add:
+          cookie:
+            name: JSESSIONID  # Example of session affinity header
+            path: /cc
+            ttl: 0s
+
+
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: sb1-api-vs
+  namespace: sb1
+spec:
+  hosts:
+  - "api.sb1.atlas.example.com"
+  gateways:
+  - istio-system/sb1-gateway  # Use the full name of the gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/cc"
+    route:
+    - destination:
+        host: api-svc.sb1.svc.cluster.local
+        port:
+          number: 3000
+        headers:
+          request:
+            add:
+              x-envoy-upstream-rq-timeout-ms: "3000"  # Example of setting session timeout
+    headers:
+      request:
+        add:
+          cookie:
+            name: JSESSIONID  # Example of session affinity header
+            path: /cc
+            ttl: 0s
+
+---
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: sb1-support-vs
+  namespace: sb1
+spec:
+  hosts:
+  - "support.sb1.atlas.example.com"
+  gateways:
+  - istio-system/sb1-gateway  # Use the full name of the gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/cc"
+    route:
+    - destination:
+        host: support-svc.sb1.svc.cluster.local
+        port:
+          number: 3000
+        headers:
+          request:
+            add:
+              x-envoy-upstream-rq-timeout-ms: "3000"  # Example of setting session timeout
+    headers:
+      request:
+        add:
+          cookie:
+            name: JSESSIONID  # Example of session affinity header
+            path: /cc
+            ttl: 0s
+
+---
