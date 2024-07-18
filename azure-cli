@@ -1,0 +1,44 @@
+az network vnet list --query '[].{Name:name, ResourceGroup:resourceGroup, Location:location}' -o table
+
+az network vnet subnet list --resource-group <ResourceGroupName> --vnet-name <VNetName> --query '[].{Name:name, AddressPrefix:addressPrefix}' -o table
+
+az vm list-ip-addresses --query '[].{VMName:virtualMachine.name, PrivateIP:virtualMachine.network.privateIpAddresses[0], PublicIP:virtualMachine.network.publicIpAddresses[0].ipAddress}' -o table
+
+
+az aks list --query '[].{Name:name, ResourceGroup:resourceGroup, Location:location}' -o table
+
+az aks show --resource-group <ResourceGroupName> --name <ClusterName> --query '{Name:name, PrivateIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].privateIpAddress, PublicIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].publicIpAddress}' -o table
+
+
+#!/bin/bash
+
+# List all VNets
+echo "VNets:"
+az network vnet list --query '[].{Name:name, ResourceGroup:resourceGroup, Location:location}' -o table
+
+# List all Subnets in each VNet
+vnets=$(az network vnet list --query '[].{Name:name, ResourceGroup:resourceGroup}' -o tsv)
+echo "Subnets:"
+for vnet in $vnets; do
+  resource_group=$(echo $vnet | cut -f2)
+  vnet_name=$(echo $vnet | cut -f1)
+  echo "VNet: $vnet_name, Resource Group: $resource_group"
+  az network vnet subnet list --resource-group $resource_group --vnet-name $vnet_name --query '[].{Name:name, AddressPrefix:addressPrefix}' -o table
+done
+
+# List all VMs with their IP addresses
+echo "VMs:"
+az vm list-ip-addresses --query '[].{VMName:virtualMachine.name, PrivateIP:virtualMachine.network.privateIpAddresses[0], PublicIP:virtualMachine.network.publicIpAddresses[0].ipAddress}' -o table
+
+# List all AKS clusters
+echo "AKS Clusters:"
+az aks list --query '[].{Name:name, ResourceGroup:resourceGroup, Location:location}' -o table
+
+# Get details of each AKS cluster
+aks_clusters=$(az aks list --query '[].{Name:name, ResourceGroup:resourceGroup}' -o tsv)
+for aks in $aks_clusters; do
+  resource_group=$(echo $aks | cut -f2)
+  cluster_name=$(echo $aks | cut -f1)
+  echo "AKS Cluster: $cluster_name, Resource Group: $resource_group"
+  az aks show --resource-group $resource_group --name $cluster_name --query '{Name:name, PrivateIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].privateIpAddress, PublicIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].publicIpAddress}' -o table
+done
