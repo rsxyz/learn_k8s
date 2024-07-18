@@ -42,3 +42,55 @@ for aks in $aks_clusters; do
   echo "AKS Cluster: $cluster_name, Resource Group: $resource_group"
   az aks show --resource-group $resource_group --name $cluster_name --query '{Name:name, PrivateIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].privateIpAddress, PublicIP:networkProfile.loadBalancerProfile.effectiveOutboundIPs[0].publicIpAddress}' -o table
 done
+
+==========================
+az network vnet list --query '[].{VNetName:name, ResourceGroup:resourceGroup, Subnets:subnets}' -o table
+
+VNET_NAME=<YourVNetName>
+RESOURCE_GROUP=<YourResourceGroupName>
+az network vnet show --name $VNET_NAME --resource-group $RESOURCE_GROUP --query '{VNetName:name, ResourceGroup:resourceGroup, Subnets:subnets}' -o json
+
+az network nsg list --resource-group $RESOURCE_GROUP --query '[].{NSGName:name, ResourceGroup:resourceGroup}' -o table
+
+NSG_NAME=<YourNSGName>
+az network nsg rule list --resource-group $RESOURCE_GROUP --nsg-name $NSG_NAME --query '[].{Name:name, Priority:priority, Direction:direction, Access:access, Protocol:protocol, Source:sourceAddressPrefix, Destination:destinationAddressPrefix, SourcePort:sourcePortRange, DestinationPort:destinationPortRange}' -o table
+
+#!/bin/bash
+
+# Variables
+RESOURCE_GROUP=<YourResourceGroupName>
+VNET_NAME=<YourVNetName>
+
+# Get Subnets in the VNet
+subnets=$(az network vnet show --name $VNET_NAME --resource-group $RESOURCE_GROUP --query 'subnets[].{Name:name, NSG:networkSecurityGroup.id}' -o tsv)
+
+# Function to extract NSG name from NSG ID
+get_nsg_name_from_id() {
+  echo $1 | awk -F '/' '{print $NF}'
+}
+
+# Loop through each subnet and get its NSG rules
+for subnet in $subnets; do
+  subnet_name=$(echo $subnet | cut -f1)
+  nsg_id=$(echo $subnet | cut -f2)
+
+  if [ "$nsg_id" != "None" ]; then
+    nsg_name=$(get_nsg_name_from_id $nsg_id)
+    echo "Subnet: $subnet_name, NSG: $nsg_name"
+    az network nsg rule list --resource-group $RESOURCE_GROUP --nsg-name $nsg_name --query '[].{Name:name, Priority:priority, Direction:direction, Access:access, Protocol:protocol, Source:sourceAddressPrefix, Destination:destinationAddressPrefix, SourcePort:sourcePortRange, DestinationPort:destinationPortRange}' -o table
+  else
+    echo "Subnet: $subnet_name has no associated NSG."
+  fi
+done
+
+# Get NSG rules for the VNet itself (if applicable)
+vnet_nsg_id=$(az network vnet show --name $VNET_NAME --resource-group $RESOURCE_GROUP --query 'networkSecurityGroup.id' -o tsv)
+
+if [ "$vnet_nsg_id" != "None" ]; then
+  vnet_nsg_name=$(get_nsg_name_from_id $vnet_nsg_id)
+  echo "VNet: $VNET_NAME, NSG: $vnet_nsg_name"
+  az network nsg rule list --resource-group $RESOURCE_GROUP --nsg-name $vnet_nsg_name --query '[].{Name:name, Priority:priority, Direction:direction, Access:access, Protocol:protocol, Source:sourceAddressPrefix, Destination:destinationAddressPrefix, SourcePort:sourcePortRange, DestinationPort:destinationPortRange}' -o table
+else
+  echo "VNet: $VNET_NAME has no associated NSG."
+fi
+
