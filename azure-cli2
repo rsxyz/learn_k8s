@@ -1,0 +1,20 @@
+# List all VMs and their NICs
+az vm list --query "[].{Name:name, NICs:networkProfile.networkInterfaces[0].id}" --output tsv | while read vmName nicId
+do
+  # Extract the NIC name from the NIC ID
+  nicName=$(basename $nicId)
+  
+  # Get the private IP address associated with the NIC
+  privateIp=$(az network nic show --ids $nicId --query "ipConfigurations[0].privateIpAddress" --output tsv)
+  
+  # Get the public IP address associated with the NIC, if any
+  publicIpId=$(az network nic show --ids $nicId --query "ipConfigurations[0].publicIpAddress.id" --output tsv)
+  if [ -n "$publicIpId" ]; then
+    publicIp=$(az network public-ip show --ids $publicIpId --query "ipAddress" --output tsv)
+  else
+    publicIp="None"
+  fi
+  
+  # Output the VM name, private IP address, and public IP address
+  echo "$vmName $privateIp $publicIp"
+done
