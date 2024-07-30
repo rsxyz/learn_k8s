@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Ensure you are logged in to Azure
+az login
+
+# Get a list of all AKS clusters in all subscriptions
+aks_clusters=$(az aks list --query '[].{name:name, resourceGroup:resourceGroup}' -o tsv)
+
+echo "AKS Clusters and Networking Details:"
+
+# Loop through each AKS cluster
+while read -r cluster_name resource_group; do
+    echo "Cluster Name: $cluster_name"
+    echo "Resource Group: $resource_group"
+
+    # Get the network profile for the AKS cluster
+    network_profile=$(az aks show --resource-group "$resource_group" --name "$cluster_name" --query 'networkProfile' -o json)
+
+    # Extract VNet and Subnet
+    vnet_subnet_id=$(echo "$network_profile" | jq -r '.vnetSubnetId')
+    vnet_name=$(echo "$vnet_subnet_id" | cut -d'/' -f9)
+    subnet_name=$(echo "$vnet_subnet_id" | cut -d'/' -f11)
+
+    echo "VNet Name: $vnet_name"
+    echo "Subnet Name: $subnet_name"
+
+    # Get VNet details to find peered networks and firewalls
+    vnet_details=$(az network vnet show --ids "$vnet_subnet_id" --query '{peering: virtualNetworkPeerings}' -o json)
+
+    # Find any peered firewalls
+    echo "Peered Firewalls:"
+    echo "$vnet_details" | jq -r '.peering[] | select(.peeringState == "Connected") | .remoteVirtualNetwork.id' | while read -r peered_vnet_id; do
+        peered_firewall=$(az network firewall list --query "[?contains(ipConfigurations[].subnet.id, '$peered_vnet_id')]" -o tsv)
+        if [[ -n "$peered_firewall" ]]; then
+            echo "$peered_firewall"
+        else
+            echo "No firewalls found in the peered network."
+        fi
+    done
+
+    echo "---------------------------------------------------"
+
+done <<< "$aks_clusters"
