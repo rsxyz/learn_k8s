@@ -1,0 +1,202 @@
+
+#!/bin/bash
+
+# Variables
+RESOURCE_GROUP="myRG"
+LOCATION="westus2"
+
+# Create resource group
+az group create --name "${RESOURCE_GROUP}" --location "${LOCATION}"
+
+#!/bin/bash
+
+# Variables
+RESOURCE_GROUP="myRG"
+LOCATION="westus2"
+SERVICE_PRINCIPAL_NAME="mySP"
+
+az ad sp create-for-rbac --name "${SERVICE_PRINCIPAL_NAME}" --skip-assignment
+
+
+
+
+SUBSCRIPTION_ID=""
+RESOURCE_GROUP="myRG"
+APP_ID=""
+
+az role assignment create --assignee ${APP_ID} --role Contributor --scope /subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}
+
+
+#!/bin/bash
+
+# Variables
+RESOURCE_GROUP="myRG"
+APP_ID="
+CLIENT_SECRET=
+CLUSTER_NAME=myAKS
+NODE_COUNT=2
+
+az aks create \
+    --resource-group "${RESOURCE_GROUP}" \
+    --name "${CLUSTER_NAME}" \
+    --node-count "${NODE_COUNT}"\
+    --service-principal "${APP_ID}" \
+    --client-secret "${CLIENT_SECRET}" \
+    --generate-ssh-keys
+
+#!/bin/bash
+
+# Variables
+RESOURCE_GROUP="myRG"
+LOCATION="westus2"
+VNET_NAME="myVNet"
+SUBNET_PRIVATE="privateSubnet"
+SUBNET_JUMPBOX="jumpboxSubnet"
+PRIVATE_VM_NAME="privateVM"
+JUMPBOX_VM_NAME="jumpboxVM"
+PRIVATE_IP_ADDRESS="10.0.1.4" # IP address for the private VM
+JUMPBOX_IP_ADDRESS="10.0.0.4" # IP address for the jumpbox VM
+JUMPBOX_PUBLIC_IP="jumpboxPublicIP"
+JUMPBOX_NIC="jumpboxNic"
+PRIVATE_NIC="privateNic"
+SECURITY_GROUP="jumpboxNSG"
+SSH_KEY_NAME="myKey"
+IMAGE="Canonical:UbuntuServer:18.04-LTS:latest" # Free tier eligible
+
+# Your public IP address (replace with your actual IP)
+MY_IP=""
+
+# Create resource group
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# Create virtual network and subnets
+az network vnet create \
+  --resource-group $RESOURCE_GROUP \
+  --name $VNET_NAME \
+  --address-prefix 10.0.0.0/16 \
+  --subnet-name $SUBNET_JUMPBOX \
+  --subnet-prefix 10.0.0.0/24
+
+az network vnet subnet create \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME \
+  --name $SUBNET_PRIVATE \
+  --address-prefix 10.0.1.0/24
+
+# Create public IP address for jump box
+az network public-ip create \
+  --resource-group $RESOURCE_GROUP \
+  --name $JUMPBOX_PUBLIC_IP \
+  --allocation-method Static
+
+# Create network security group
+az network nsg create \
+  --resource-group $RESOURCE_GROUP \
+  --name $SECURITY_GROUP
+
+# Create NSG rule to allow SSH only from your IP
+az network nsg rule create \
+  --resource-group $RESOURCE_GROUP \
+  --nsg-name $SECURITY_GROUP \
+  --name AllowSSH \
+  --priority 1000 \
+  --protocol Tcp \
+  --direction Inbound \
+  --source-address-prefixes $MY_IP \
+  --source-port-ranges "*" \
+  --destination-address-prefixes "*" \
+  --destination-port-ranges 22 \
+  --access Allow
+
+# Create NIC for jump box VM
+az network nic create \
+  --resource-group $RESOURCE_GROUP \
+  --name $JUMPBOX_NIC \
+  --vnet-name $VNET_NAME \
+  --subnet $SUBNET_JUMPBOX \
+  --network-security-group $SECURITY_GROUP \
+  --public-ip-address $JUMPBOX_PUBLIC_IP
+
+# Create NIC for private VM
+az network nic create \
+  --resource-group $RESOURCE_GROUP \
+  --name $PRIVATE_NIC \
+  --vnet-name $VNET_NAME \
+  --subnet $SUBNET_PRIVATE \
+  --private-ip-address $PRIVATE_IP_ADDRESS
+
+# Generate SSH key pair if not exists
+if [ ! -f ~/.ssh/$SSH_KEY_NAME ]; then
+  ssh-keygen -t rsa -b 2048 -f ~/.ssh/$SSH_KEY_NAME -N ""
+fi
+
+# Create jump box VM
+az vm create \
+  --resource-group $RESOURCE_GROUP \
+  --name $JUMPBOX_VM_NAME \
+  --nics $JUMPBOX_NIC \
+  --image $IMAGE \
+  --admin-username azureuser \
+  --ssh-key-value ~/.ssh/$SSH_KEY_NAME.pub
+
+# Create private VM
+az vm create \
+  --resource-group $RESOURCE_GROUP \
+  --name $PRIVATE_VM_NAME \
+  --nics $PRIVATE_NIC \
+  --image $IMAGE \
+  --admin-username azureuser \
+  --ssh-key-value ~/.ssh/$SSH_KEY_NAME.pub \
+  --no-wait
+
+echo "Provisioning complete. You can now SSH into the jump box using:"
+echo "ssh azureuser@$(az network public-ip show --resource-group $RESOURCE_GROUP --name $JUMPBOX_PUBLIC_IP --query ipAddress -o tsv) -i ~/.ssh/$SSH_KEY_NAME"
+
+# private vm internet access
+# Create public IP address for jump box
+NGW_PUBLIC_IP="NW_sku_public_ip"
+az network public-ip create \
+  --resource-group $RESOURCE_GROUP \
+  --name $NGW_PUBLIC_IP \
+  --sku Standard \
+  --location $LOCATION
+
+
+az network nat gateway create \
+  --resource-group $RESOURCE_GROUP \
+  --name MyNatGateway \
+  --location $LOCATION \
+  --public-ip-addresses $NGW_PUBLIC_IP \
+  --idle-timeout 10
+
+az network vnet subnet update \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME \
+  --name $SUBNET_PRIVATE \
+  --nat-gateway MyNatGateway
+
+az network nsg create \
+  --resource-group $RESOURCE_GROUP \
+  --name MyNSG \
+  --location $LOCATION
+
+az network nsg rule create \
+  --resource-group $RESOURCE_GROUP \
+  --nsg-name MyNSG \
+  --name AllowInternetOutbound \
+  --priority 100 \
+  --direction Outbound \
+  --access Allow \
+  --protocol Tcp \
+  --destination-address-prefixes Internet \
+  --destination-port-ranges 80 443 \
+  --source-address-prefixes '*' \
+  --source-port-ranges '*'
+
+az network vnet subnet update \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name $VNET_NAME \
+  --name $SUBNET_PRIVATE \
+  --network-security-group MyNSG
+
+az group delete --name $RESOURCE_GROUP --yes --no-wait
