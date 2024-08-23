@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Variables - Customize these as needed
+SUBSCRIPTION_ID="<your-subscription-id>"
+RESOURCE_GROUP="<your-resource-group-name>"
+KEYVAULT_NAME="<your-keyvault-name>"
+SERVICE_PRINCIPAL_NAME="<your-service-principal-name>"
+MANAGED_IDENTITY_NAME="<your-managed-identity-name>"
+
+# Set the subscription
+az account set --subscription $SUBSCRIPTION_ID
+
+# Create a resource group if it doesn't exist
+az group create --name $RESOURCE_GROUP --location eastus
+
+# Create a Service Principal
+SERVICE_PRINCIPAL_OUTPUT=$(az ad sp create-for-rbac --name $SERVICE_PRINCIPAL_NAME --query "{clientId:appId, clientSecret:password, tenantId:tenant}" --output json)
+SERVICE_PRINCIPAL_CLIENT_ID=$(echo $SERVICE_PRINCIPAL_OUTPUT | jq -r .clientId)
+SERVICE_PRINCIPAL_CLIENT_SECRET=$(echo $SERVICE_PRINCIPAL_OUTPUT | jq -r .clientSecret)
+SERVICE_PRINCIPAL_TENANT_ID=$(echo $SERVICE_PRINCIPAL_OUTPUT | jq -r .tenantId)
+
+echo "Service Principal created:"
+echo "Client ID: $SERVICE_PRINCIPAL_CLIENT_ID"
+echo "Client Secret: $SERVICE_PRINCIPAL_CLIENT_SECRET"
+echo "Tenant ID: $SERVICE_PRINCIPAL_TENANT_ID"
+
+# Create an Azure Key Vault
+az keyvault create --name $KEYVAULT_NAME --resource-group $RESOURCE_GROUP --location eastus
+
+# Store the service principal credentials in the Key Vault
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "sp-client-id" --value $SERVICE_PRINCIPAL_CLIENT_ID
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "sp-client-secret" --value $SERVICE_PRINCIPAL_CLIENT_SECRET
+az keyvault secret set --vault-name $KEYVAULT_NAME --name "sp-tenant-id" --value $SERVICE_PRINCIPAL_TENANT_ID
+
+echo "Service Principal credentials stored in Key Vault."
+
+# Create a user-assigned managed identity
+az identity create --name $MANAGED_IDENTITY_NAME --resource-group $RESOURCE_GROUP
+
+# Output the managed identity details
+IDENTITY_OUTPUT=$(az identity show --name $MANAGED_IDENTITY_NAME --resource-group $RESOURCE_GROUP --query "{clientId:clientId, principalId:principalId}" --output json)
+IDENTITY_CLIENT_ID=$(echo $IDENTITY_OUTPUT | jq -r .clientId)
+IDENTITY_PRINCIPAL_ID=$(echo $IDENTITY_OUTPUT | jq -r .principalId)
+
+echo "User-Assigned Managed Identity created:"
+echo "Client ID: $IDENTITY_CLIENT_ID"
+echo "Principal ID: $IDENTITY_PRINCIPAL_ID"
